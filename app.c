@@ -39,6 +39,8 @@ void readchars(void) {
 	}
 }
 
+uint8 flag;
+
 /* Main application */
 void appMain(gecko_configuration_t *pconfig)
 {
@@ -48,6 +50,7 @@ void appMain(gecko_configuration_t *pconfig)
 
   /* Initialize debug prints. Note: debug prints are off by default. See DEBUG_LEVEL in app.h */
   initLog();
+  RETARGET_SerialEnableFlowControl();
 
   /* Initialize stack */
   gecko_init(pconfig);
@@ -84,11 +87,18 @@ void appMain(gecko_configuration_t *pconfig)
 
         /* Start general advertising and enable connections. */
         gecko_cmd_le_gap_start_advertising(0, le_gap_general_discoverable, le_gap_connectable_scannable);
+        gecko_cmd_hardware_set_soft_timer(10<<15,0,1);
+        flag = 0;
         break;
+
+      case gecko_evt_hardware_soft_timer_id:
+    	  flag = 1;
+    	  readchars();
+    	  break;
 
       case gecko_evt_system_external_signal_id:
     	  GPIO_PinModeSet(gpioPortB,1,gpioModePushPull,1);
-    	  readchars();
+    	  if(flag) readchars();
     	  GPIO_PinOutClear(gpioPortB,1);
     	  break;
 

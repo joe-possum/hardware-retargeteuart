@@ -85,7 +85,6 @@ static void enableRxInterrupt()
  *****************************************************************************/
 void EUART0_RX_IRQHandler(void)
 {
-	GPIO_PinOutSet(gpioPortB,0);
 	uint32_t flags = EUSART_IntGet(EUART0);
 	if (flags & EUSART_IF_RXFLIF) {
 		if (rxCount < RXBUFSIZE) {
@@ -105,10 +104,7 @@ void EUART0_RX_IRQHandler(void)
 		}
 	}
 	EUSART_IntClear(EUART0, flags);
-	GPIO_PinOutSet(gpioPortB,1);
-	gecko_external_signal(1);
-	GPIO_PinOutClear(gpioPortB,1);
-	GPIO_PinOutClear(gpioPortB,0);
+	// gecko_external_signal(1);
 }
 
 /**************************************************************************//**
@@ -136,8 +132,6 @@ void RETARGET_SerialInit(void)
 	/* To avoid false start, configure output as high */
 	GPIO_PinModeSet(RETARGET_TXPORT, RETARGET_TXPIN, gpioModePushPull, 1);
 	GPIO_PinModeSet(RETARGET_RXPORT, RETARGET_RXPIN, gpioModeInputPull, 1);
-	GPIO_PinModeSet(gpioPortB,0,gpioModePushPull,0);
-	GPIO_PinModeSet(gpioPortB,1,gpioModePushPull,0);
 
 	EUSART_UartInit_TypeDef init = EUSART_UART_INIT_DEFAULT_LF;
 	/* Enable DK RS232/UART switch */
@@ -235,20 +229,14 @@ int RETARGET_WriteChar(char c)
  *****************************************************************************/
 bool RETARGET_SerialEnableFlowControl(void)
 {
-#if defined(RETARGET_USART)               \
-  && defined(_USART_ROUTEPEN_CTSPEN_MASK) \
-  && defined(RETARGET_CTSPORT)            \
-  && defined(RETARGET_RTSPORT)
   GPIO_PinModeSet(RETARGET_CTSPORT, RETARGET_CTSPIN, gpioModeInputPull, 0);
   GPIO_PinModeSet(RETARGET_RTSPORT, RETARGET_RTSPIN, gpioModePushPull, 0);
-  RETARGET_UART->ROUTELOC1 = (RETARGET_CTS_LOCATION << _USART_ROUTELOC1_CTSLOC_SHIFT)
-                             | (RETARGET_RTS_LOCATION << _USART_ROUTELOC1_RTSLOC_SHIFT);
-  RETARGET_UART->ROUTEPEN |= (USART_ROUTEPEN_CTSPEN | USART_ROUTEPEN_RTSPEN);
-  RETARGET_UART->CTRLX    |= USART_CTRLX_CTSEN;
+  GPIO->EUARTROUTE[0].CTSROUTE = (RETARGET_CTSPORT << _GPIO_EUART_CTSROUTE_PORT_SHIFT)
+					| (RETARGET_CTSPIN << _GPIO_EUART_CTSROUTE_PIN_SHIFT);
+  GPIO->EUARTROUTE[0].RTSROUTE = (RETARGET_RTSPORT << _GPIO_EUART_RTSROUTE_PORT_SHIFT)
+							| (RETARGET_RTSPIN << _GPIO_EUART_RTSROUTE_PIN_SHIFT);
+  GPIO->EUARTROUTE[0].ROUTEEN |= GPIO_EUART_ROUTEEN_RTSPEN;
   return true;
-#else
-  return false;
-#endif
 }
 
 /**************************************************************************//**
