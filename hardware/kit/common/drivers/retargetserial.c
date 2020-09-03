@@ -1,6 +1,6 @@
 /***************************************************************************//**
  * @file
- * @brief Provide stdio retargeting to USART/UART or LEUART.
+ * @brief Provide stdio retargeting to EUART on BG22
  *******************************************************************************
  * # License
  * <b>Copyright 2018 Silicon Laboratories Inc. www.silabs.com</b>
@@ -51,17 +51,7 @@
  * @{
  ******************************************************************************/
 
-#if defined(RETARGET_USART)
-#include "em_usart.h"
-#endif
-
-#if defined(RETARGET_LEUART)
-#include "em_leuart.h"
-#endif
-
-#if defined(RETARGET_EUSART)
 #include "em_eusart.h"
-#endif
 
 /* Receive buffer */
 #ifndef RXBUFSIZE
@@ -79,11 +69,7 @@ static bool             initialized = false;    /**< Initialize UART/LEUART */
  *****************************************************************************/
 static void disableRxInterrupt()
 {
-#if defined(RETARGET_USART)
-  USART_IntDisable(RETARGET_UART, USART_IF_RXDATAV);
-#else
-  EUSART_IntDisable(RETARGET_UART, EUSART_IF_RXFLIF);
-#endif
+	EUSART_IntDisable(EUART0, EUSART_IF_RXFLIF);
 }
 
 /**************************************************************************//**
@@ -91,48 +77,38 @@ static void disableRxInterrupt()
  *****************************************************************************/
 static void enableRxInterrupt()
 {
-#if defined(RETARGET_USART)
-  USART_IntEnable(RETARGET_UART, USART_IF_RXDATAV);
-#else
-  EUSART_IntEnable(RETARGET_UART, EUSART_IF_RXFLIF);
-#endif
+	EUSART_IntEnable(EUART0, EUSART_IF_RXFLIF);
 }
 
 /**************************************************************************//**
  * @brief UART/LEUART IRQ Handler
  *****************************************************************************/
-void RETARGET_IRQ_NAME(void)
+void EUART0_RX_IRQHandler(void)
 {
-  GPIO_PinOutSet(gpioPortB,0);
-#if defined(RETARGET_USART)
-  if (RETARGET_UART->STATUS & USART_STATUS_RXDATAV) {
-#elif defined(RETARGET_EUSART)
-  uint32_t flags = EUSART_IntGet(RETARGET_UART);
-  if (flags & EUSART_IF_RXFLIF) {
-#else
-  if (RETARGET_UART->IF & LEUART_IF_RXDATAV) {
-#endif
-    if (rxCount < RXBUFSIZE) {
-      /* There is room for data in the RX buffer so we store the data. */
-      rxBuffer[rxWriteIndex] = RETARGET_RX(RETARGET_UART);
-      rxWriteIndex++;
-      rxCount++;
-      if (rxWriteIndex == RXBUFSIZE) {
-        rxWriteIndex = 0;
-      }
-    } else {
-      /* The RX buffer is full so we must wait for the RETARGET_ReadChar()
-       * function to make some more room in the buffer. RX interrupts are
-       * disabled to let the ISR exit. The RX interrupt will be enabled in
-       * RETARGET_ReadChar(). */
-      disableRxInterrupt();
-    }
-  }
-  EUSART_IntClear(RETARGET_UART, flags);
-  GPIO_PinOutSet(gpioPortB,1);
-  gecko_external_signal(1);
-  GPIO_PinOutClear(gpioPortB,1);
-  GPIO_PinOutClear(gpioPortB,0);
+	GPIO_PinOutSet(gpioPortB,0);
+	uint32_t flags = EUSART_IntGet(EUART0);
+	if (flags & EUSART_IF_RXFLIF) {
+		if (rxCount < RXBUFSIZE) {
+			/* There is room for data in the RX buffer so we store the data. */
+			rxBuffer[rxWriteIndex] = EUSART_Rx(EUART0);
+			rxWriteIndex++;
+			rxCount++;
+			if (rxWriteIndex == RXBUFSIZE) {
+				rxWriteIndex = 0;
+			}
+		} else {
+			/* The RX buffer is full so we must wait for the RETARGET_ReadChar()
+			 * function to make some more room in the buffer. RX interrupts are
+			 * disabled to let the ISR exit. The RX interrupt will be enabled in
+			 * RETARGET_ReadChar(). */
+			disableRxInterrupt();
+		}
+	}
+	EUSART_IntClear(EUART0, flags);
+	GPIO_PinOutSet(gpioPortB,1);
+	gecko_external_signal(1);
+	GPIO_PinOutClear(gpioPortB,1);
+	GPIO_PinOutClear(gpioPortB,0);
 }
 
 /**************************************************************************//**
@@ -153,172 +129,49 @@ void RETARGET_SerialCrLf(int on)
  *****************************************************************************/
 void RETARGET_SerialInit(void)
 {
-  /* Enable peripheral clocks */
-#if defined(_CMU_HFPERCLKEN0_MASK)
-  CMU_ClockEnable(cmuClock_HFPER, true);
-#endif
-  /* Configure GPIO pins */
-  CMU_ClockEnable(cmuClock_GPIO, true);
-  /* To avoid false start, configure output as high */
-  GPIO_PinModeSet(RETARGET_TXPORT, RETARGET_TXPIN, gpioModePushPull, 1);
-  GPIO_PinModeSet(RETARGET_RXPORT, RETARGET_RXPIN, gpioModeInputPull, 1);
-  GPIO_PinModeSet(gpioPortB,0,gpioModePushPull,0);
-  GPIO_PinModeSet(gpioPortB,1,gpioModePushPull,0);
+	/* Enable peripheral clocks */
+	CMU->EUART0CLKCTRL = 2;  // EM23GRPACLK is clocking UART
+	/* Configure GPIO pins */
+	CMU_ClockEnable(cmuClock_GPIO, true);
+	/* To avoid false start, configure output as high */
+	GPIO_PinModeSet(RETARGET_TXPORT, RETARGET_TXPIN, gpioModePushPull, 1);
+	GPIO_PinModeSet(RETARGET_RXPORT, RETARGET_RXPIN, gpioModeInputPull, 1);
+	GPIO_PinModeSet(gpioPortB,0,gpioModePushPull,0);
+	GPIO_PinModeSet(gpioPortB,1,gpioModePushPull,0);
 
-#if defined(RETARGET_USART)
-  USART_TypeDef           *usart = RETARGET_UART;
-  USART_InitAsync_TypeDef init   = USART_INITASYNC_DEFAULT;
+	EUSART_UartInit_TypeDef init = EUSART_UART_INIT_DEFAULT_LF;
+	/* Enable DK RS232/UART switch */
+	RETARGET_PERIPHERAL_ENABLE();
 
-  /* Enable DK RS232/UART switch */
-  RETARGET_PERIPHERAL_ENABLE();
+	CMU_ClockEnable(cmuClock_EUART0, true);
 
-  CMU_ClockEnable(RETARGET_CLK, true);
+	/* Configure USART for basic async operation */
+	init.enable = eusartDisable;
+	EUSART_UartInitLf(EUART0, &init);
 
-  /* Configure USART for basic async operation */
-  init.enable = usartDisable;
-  USART_InitAsync(usart, &init);
+	/* Enable pins at correct UART/USART location. */
+	GPIO->EUARTROUTE[0].ROUTEEN = GPIO_EUART_ROUTEEN_TXPEN;
+	GPIO->EUARTROUTE[0].TXROUTE =
+			(RETARGET_TXPORT << _GPIO_EUART_TXROUTE_PORT_SHIFT)
+			| (RETARGET_TXPIN << _GPIO_EUART_TXROUTE_PIN_SHIFT);
+	GPIO->EUARTROUTE[0].RXROUTE =
+			(RETARGET_RXPORT << _GPIO_EUART_RXROUTE_PORT_SHIFT)
+			| (RETARGET_RXPIN << _GPIO_EUART_RXROUTE_PIN_SHIFT);
 
-#if defined(GPIO_USART_ROUTEEN_TXPEN)
-  /* Enable pins at correct UART/USART location. */
-  GPIO->USARTROUTE[RETARGET_UART_INDEX].ROUTEEN =
-    GPIO_USART_ROUTEEN_TXPEN | GPIO_USART_ROUTEEN_RXPEN;
-  GPIO->USARTROUTE[RETARGET_UART_INDEX].TXROUTE =
-    (RETARGET_TXPORT << _GPIO_USART_TXROUTE_PORT_SHIFT)
-    | (RETARGET_TXPIN << _GPIO_USART_TXROUTE_PIN_SHIFT);
-  GPIO->USARTROUTE[RETARGET_UART_INDEX].RXROUTE =
-    (RETARGET_RXPORT << _GPIO_USART_RXROUTE_PORT_SHIFT)
-    | (RETARGET_RXPIN << _GPIO_USART_RXROUTE_PIN_SHIFT);
 
-#else
-  /* Enable pins at correct UART/USART location. */
-  #if defined(USART_ROUTEPEN_RXPEN)
-  usart->ROUTEPEN = USART_ROUTEPEN_RXPEN | USART_ROUTEPEN_TXPEN;
-  usart->ROUTELOC0 = (usart->ROUTELOC0
-                      & ~(_USART_ROUTELOC0_TXLOC_MASK
-                          | _USART_ROUTELOC0_RXLOC_MASK) )
-                     | (RETARGET_TX_LOCATION << _USART_ROUTELOC0_TXLOC_SHIFT)
-                     | (RETARGET_RX_LOCATION << _USART_ROUTELOC0_RXLOC_SHIFT);
-  #else
-  usart->ROUTE = USART_ROUTE_RXPEN | USART_ROUTE_TXPEN | RETARGET_LOCATION;
-  #endif
-#endif
+	/* Clear previous RX interrupts */
+	EUSART_IntClear(EUART0, EUSART_IF_RXFLIF);
+	NVIC_ClearPendingIRQ(EUART0_RX_IRQn);
 
-  /* Clear previous RX interrupts */
-  USART_IntClear(RETARGET_UART, USART_IF_RXDATAV);
-  NVIC_ClearPendingIRQ(RETARGET_IRQn);
+	/* Enable RX interrupts */
+	EUSART_IntEnable(EUART0, EUSART_IF_RXFLIF);
+	NVIC_EnableIRQ(EUART0_RX_IRQn);
 
-  /* Enable RX interrupts */
-  USART_IntEnable(RETARGET_UART, USART_IF_RXDATAV);
-  NVIC_EnableIRQ(RETARGET_IRQn);
-
-  /* Finally enable it */
-  USART_Enable(usart, usartEnable);
-#elif defined(RETARGET_EUSART)
-  EUSART_TypeDef      *eusart = RETARGET_UART;
-  EUSART_UartInit_TypeDef init = EUSART_UART_INIT_DEFAULT_LF;
-  /* Enable DK RS232/UART switch */
-  RETARGET_PERIPHERAL_ENABLE();
-
-  CMU_ClockEnable(RETARGET_CLK, true);
-  CMU->EUART0CLKCTRL = 2;  // EM23GRPACLK is clocking UART
-
-  /* Configure USART for basic async operation */
-  init.enable = eusartDisable;
-  EUSART_UartInitLf(eusart, &init);
-
-#if defined(GPIO_EUART_ROUTEEN_TXPEN)
-  /* Enable pins at correct UART/USART location. */
-  GPIO->EUARTROUTE[RETARGET_UART_INDEX].ROUTEEN = GPIO_EUART_ROUTEEN_TXPEN;
-  GPIO->EUARTROUTE[RETARGET_UART_INDEX].TXROUTE =
-    (RETARGET_TXPORT << _GPIO_EUART_TXROUTE_PORT_SHIFT)
-    | (RETARGET_TXPIN << _GPIO_EUART_TXROUTE_PIN_SHIFT);
-  GPIO->EUARTROUTE[RETARGET_UART_INDEX].RXROUTE =
-    (RETARGET_RXPORT << _GPIO_EUART_RXROUTE_PORT_SHIFT)
-    | (RETARGET_RXPIN << _GPIO_EUART_RXROUTE_PIN_SHIFT);
-
-#else
-  /* Enable pins at correct UART/USART location. */
-  #if defined(USART_ROUTEPEN_RXPEN)
-  usart->ROUTEPEN = USART_ROUTEPEN_RXPEN | USART_ROUTEPEN_TXPEN;
-  usart->ROUTELOC0 = (usart->ROUTELOC0
-                      & ~(_USART_ROUTELOC0_TXLOC_MASK
-                          | _USART_ROUTELOC0_RXLOC_MASK) )
-                     | (RETARGET_TX_LOCATION << _USART_ROUTELOC0_TXLOC_SHIFT)
-                     | (RETARGET_RX_LOCATION << _USART_ROUTELOC0_RXLOC_SHIFT);
-  #else
-  eusart->ROUTE = EUSART_ROUTE_RXPEN | EUSART_ROUTE_TXPEN | RETARGET_LOCATION;
-  #endif
-#endif
-
-  /* Clear previous RX interrupts */
-  EUSART_IntClear(RETARGET_UART, EUSART_IF_RXFLIF);
-  NVIC_ClearPendingIRQ(RETARGET_IRQn);
-
-  /* Enable RX interrupts */
-  EUSART_IntEnable(RETARGET_UART, EUSART_IF_RXFLIF);
-  NVIC_EnableIRQ(RETARGET_IRQn);
-
-  /* Finally enable it */
-  EUSART_Enable(eusart, eusartEnable);
-#else
-  LEUART_TypeDef      *leuart = RETARGET_UART;
-  LEUART_Init_TypeDef init    = LEUART_INIT_DEFAULT;
-
-  /* Enable DK LEUART/RS232 switch */
-  RETARGET_PERIPHERAL_ENABLE();
-
-  /* Enable CORE LE clock in order to access LE modules */
-  CMU_ClockEnable(cmuClock_CORELE, true);
-
-#if defined(RETARGET_VCOM)
-  /* Select HFXO/2 for LEUARTs (and wait for it to stabilize) */
-#if defined(_CMU_LFCLKSEL_LFB_HFCORECLKLEDIV2)
-  CMU_ClockSelectSet(cmuClock_LFB, cmuSelect_CORELEDIV2);
-#else
-  CMU_ClockSelectSet(cmuClock_LFB, cmuSelect_HFCLKLE);
-#endif
-#else
-  /* Select LFXO for LEUARTs (and wait for it to stabilize) */
-  CMU_ClockSelectSet(cmuClock_LFB, cmuSelect_LFXO);
-#endif
-
-  CMU_ClockEnable(RETARGET_CLK, true);
-
-  /* Do not prescale clock */
-  CMU_ClockDivSet(RETARGET_CLK, cmuClkDiv_1);
-
-  /* Configure LEUART */
-  init.enable = leuartDisable;
-#if defined(RETARGET_VCOM)
-  init.baudrate = 115200;
-#endif
-  LEUART_Init(leuart, &init);
-  /* Enable pins at default location */
-  #if defined(LEUART_ROUTEPEN_RXPEN)
-  leuart->ROUTEPEN = USART_ROUTEPEN_RXPEN | USART_ROUTEPEN_TXPEN;
-  leuart->ROUTELOC0 = (leuart->ROUTELOC0
-                       & ~(_LEUART_ROUTELOC0_TXLOC_MASK
-                           | _LEUART_ROUTELOC0_RXLOC_MASK) )
-                      | (RETARGET_TX_LOCATION << _LEUART_ROUTELOC0_TXLOC_SHIFT)
-                      | (RETARGET_RX_LOCATION << _LEUART_ROUTELOC0_RXLOC_SHIFT);
-  #else
-  leuart->ROUTE = LEUART_ROUTE_RXPEN | LEUART_ROUTE_TXPEN | RETARGET_LOCATION;
-  #endif
-
-  /* Clear previous RX interrupts */
-  LEUART_IntClear(RETARGET_UART, LEUART_IF_RXDATAV);
-  NVIC_ClearPendingIRQ(RETARGET_IRQn);
-
-  /* Enable RX interrupts */
-  LEUART_IntEnable(RETARGET_UART, LEUART_IF_RXDATAV);
-  NVIC_EnableIRQ(RETARGET_IRQn);
-
-  /* Finally enable it */
-  LEUART_Enable(leuart, leuartEnable);
-#endif
+	/* Finally enable it */
+	EUSART_Enable(EUART0, eusartEnable);
 
 #if !defined(__CROSSWORKS_ARM) && defined(__GNUC__)
-  setvbuf(stdout, NULL, _IONBF, 0);   /*Set unbuffered mode for stdout (newlib)*/
+	setvbuf(stdout, NULL, _IONBF, 0);   /*Set unbuffered mode for stdout (newlib)*/
 #endif
 
   initialized = true;
@@ -369,9 +222,9 @@ int RETARGET_WriteChar(char c)
 
   /* Add CR or LF to CRLF if enabled */
   if (LFtoCRLF && (c == '\n')) {
-    RETARGET_TX(RETARGET_UART, '\r');
+	  EUSART_Tx(EUART0, '\r');
   }
-  RETARGET_TX(RETARGET_UART, c);
+  EUSART_Tx(EUART0, c);
 
   return c;
 }
@@ -403,25 +256,7 @@ bool RETARGET_SerialEnableFlowControl(void)
  *****************************************************************************/
 void RETARGET_SerialFlush(void)
 {
-#if defined(RETARGET_USART)
-
-#if defined(USART_STATUS_TXIDLE)
-#define _GENERIC_UART_STATUS_IDLE     USART_STATUS_TXIDLE
-#else
-#define _GENERIC_UART_STATUS_IDLE     USART_STATUS_TXC
-#endif
-
-#else
-
-#if defined(LEUART_STATUS_TXIDLE)
-#define _GENERIC_UART_STATUS_IDLE     LEUART_STATUS_TXIDLE
-#else
-#define _GENERIC_UART_STATUS_IDLE     EUSART_STATUS_TXC
-#endif
-
-#endif
-
-  while (!(RETARGET_UART->STATUS & _GENERIC_UART_STATUS_IDLE)) ;
+  while(!(EUART0->STATUS & EUSART_STATUS_TXIDLE));
 }
 
 /** @} (end group RetargetIo) */

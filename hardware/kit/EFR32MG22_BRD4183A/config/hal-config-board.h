@@ -165,8 +165,7 @@
 // [PTI]$
 
 // $[SERIAL]
-#define BSP_SERIAL_APP_PORT                  (HAL_SERIAL_PORT_EUART0)
-//#define BSP_SERIAL_APP_PORT                  (HAL_SERIAL_PORT_USART1)
+#define BSP_SERIAL_APP_PORT                  (HAL_SERIAL_PORT_USART1)
 #define BSP_SERIAL_APP_TX_PIN                (5U)
 #define BSP_SERIAL_APP_TX_PORT               (gpioPortA)
 

@@ -25,7 +25,6 @@
 #include "gatt_db.h"
 
 #include "app.h"
-#include "em_eusart.h"
 
 /* Print boot message */
 static void bootMessage(struct gecko_msg_system_boot_evt_t *bootevt);
@@ -60,7 +59,7 @@ void appMain(gecko_configuration_t *pconfig)
     /* if there are no events pending then the next call to gecko_wait_event() may cause
      * device go to deep sleep. Make sure that debug prints are flushed before going to sleep */
     if (!gecko_event_pending()) {
-      //flushLog();
+      flushLog();
     }
 
     /* Check for stack event. This is a blocking event listener. If you want non-blocking please see UG136. */
@@ -75,13 +74,13 @@ void appMain(gecko_configuration_t *pconfig)
 
         bootMessage(&(evt->data.evt_system_boot));
         printLog("boot event - starting advertising\r\n");
-        //while(1) EUSART_Tx(EUART0,EUSART_Rx(EUART0));
+
         /* Set advertising parameters. 100ms advertisement interval.
          * The first parameter is advertising set handle
          * The next two parameters are minimum and maximum advertising interval, both in
          * units of (milliseconds * 1.6).
          * The last two parameters are duration and maxevents left as default. */
-        gecko_cmd_le_gap_set_advertise_timing(0, 160, 160, 0, 10);
+        gecko_cmd_le_gap_set_advertise_timing(0, 160, 160, 0, 0);
 
         /* Start general advertising and enable connections. */
         gecko_cmd_le_gap_start_advertising(0, le_gap_general_discoverable, le_gap_connectable_scannable);
